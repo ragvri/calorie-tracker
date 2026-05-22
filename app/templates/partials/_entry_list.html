@@ -1,0 +1,161 @@
+<div id="entry-list" class="fade-in">
+    <!-- Daily Summary Card with Calorie Ring -->
+    <div class="summary-card rounded-2xl p-5 mb-4 text-white">
+        <div class="flex items-center justify-between mb-1">
+            <span class="text-sm font-medium text-white/70">Daily Summary</span>
+        </div>
+
+        <div class="flex items-center gap-5">
+            <!-- Calorie Ring -->
+            <div class="relative flex-shrink-0">
+                <svg width="100" height="100" viewBox="0 0 100 100">
+                    <!-- Background ring -->
+                    <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6"/>
+                    <!-- Progress ring — 2400 kcal default target -->
+                    {% set goal = 2400 %}
+                    {% set pct = (totals.calories / goal * 100)|round(1) %}
+                    {% if pct > 100 %}{% set pct = 100 %}{% endif %}
+                    {% set offset = 289 - (289 * (pct / 100)) %}
+                    <circle cx="50" cy="50" r="46" fill="none" stroke="url(#ringGrad)" stroke-width="6"
+                            stroke-linecap="round" 
+                            class="cal-ring"
+                            style="stroke-dashoffset: {{ offset|round(1) }}"/>
+                    <defs>
+                        <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#f59e0b"/>
+                            <stop offset="100%" stop-color="#e03a21"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <!-- Center text -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <span class="text-2xl font-extrabold leading-tight">{{ "%.0f"|format(totals.calories) }}</span>
+                    <span class="text-[10px] text-white/60 font-medium">kcal</span>
+                </div>
+            </div>
+
+            <!-- Macro stats -->
+            <div class="flex-1 space-y-2.5">
+                <!-- Protein -->
+                <div>
+                    <div class="flex justify-between text-xs mb-0.5">
+                        <span class="font-medium text-blue-300">Protein</span>
+                        <span class="font-bold">{{ "%.0f"|format(totals.protein) }}g</span>
+                    </div>
+                    {% set daily_p = 150 %}
+                    {% set ppct = (totals.protein / daily_p * 100)|round(0) %}
+                    <div class="bg-white/10 rounded-full h-1.5 overflow-hidden">
+                        <div class="macro-fill bg-blue-400" style="width: {{ ppct if ppct <= 100 else 100 }}%"></div>
+                    </div>
+                </div>
+                <!-- Carbs -->
+                <div>
+                    <div class="flex justify-between text-xs mb-0.5">
+                        <span class="font-medium text-amber-300">Carbs</span>
+                        <span class="font-bold">{{ "%.0f"|format(totals.carbs) }}g</span>
+                    </div>
+                    {% set daily_c = 300 %}
+                    {% set cpct = (totals.carbs / daily_c * 100)|round(0) %}
+                    <div class="bg-white/10 rounded-full h-1.5 overflow-hidden">
+                        <div class="macro-fill bg-amber-400" style="width: {{ cpct if cpct <= 100 else 100 }}%"></div>
+                    </div>
+                </div>
+                <!-- Fat -->
+                <div>
+                    <div class="flex justify-between text-xs mb-0.5">
+                        <span class="font-medium text-rose-300">Fat</span>
+                        <span class="font-bold">{{ "%.0f"|format(totals.fat) }}g</span>
+                    </div>
+                    {% set daily_f = 65 %}
+                    {% set fpct = (totals.fat / daily_f * 100)|round(0) %}
+                    <div class="bg-white/10 rounded-full h-1.5 overflow-hidden">
+                        <div class="macro-fill bg-rose-400" style="width: {{ fpct if fpct <= 100 else 100 }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entries List -->
+    <div id="entries-container" class="space-y-3">
+        {% if entries|length == 0 %}
+        <div class="text-center py-16 text-gray-400">
+            <div class="text-5xl mb-3">🍽️</div>
+            <p class="font-semibold text-gray-500 text-base">No meals logged</p>
+            <p class="text-sm mt-1">Tap <span class="text-brand-500 font-medium">📸</span> below to snap your first meal</p>
+        </div>
+        {% else %}
+            {% for entry in entries %}
+            <div class="entry-card flex gap-3 p-3 items-start fade-in" id="entry-{{ entry.id }}">
+                <!-- Food image -->
+                {% if entry.image_url %}
+                <div class="flex-shrink-0 w-[72px] h-[72px] rounded-xl overflow-hidden bg-gray-100">
+                    <img src="{{ entry.image_url }}" alt="{{ entry.food_name }}" class="w-full h-full object-cover" loading="lazy">
+                </div>
+                {% else %}
+                <div class="flex-shrink-0 w-[72px] h-[72px] rounded-xl bg-gray-50 flex items-center justify-center text-3xl">
+                    🥘
+                </div>
+                {% endif %}
+
+                <!-- Details -->
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                            <h3 class="font-semibold text-gray-900 text-sm leading-tight truncate">{{ entry.food_name }}</h3>
+                            <div class="flex items-center gap-1.5 mt-0.5">
+                                <span class="text-[11px] text-gray-400 font-medium">{{ entry.time }}</span>
+                                {% if entry.serving_size %}
+                                <span class="text-[11px] text-gray-300">·</span>
+                                <span class="text-[11px] text-gray-400">{{ entry.serving_size }}</span>
+                                {% endif %}
+                                {% if entry.confidence == 'low' %}
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-600 border border-amber-200">
+                                    rough
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="text-right flex-shrink-0">
+                            <div class="text-base font-bold text-gray-900 leading-tight">{{ "%.0f"|format(entry.calories) }}</div>
+                            <div class="text-[10px] text-gray-400 font-medium">kcal</div>
+                        </div>
+                    </div>
+
+                    {% if entry.description %}
+                    <p class="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-1">{{ entry.description }}</p>
+                    {% endif %}
+
+                    <!-- Macro bars inside card -->
+                    <div class="flex items-center gap-3 mt-2">
+                        <div class="flex items-center gap-1">
+                            <div class="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0"></div>
+                            <span class="text-[11px] font-semibold text-blue-600">{{ "%.0f"|format(entry.protein_g) }}<span class="font-normal text-blue-400">g P</span></span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <div class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></div>
+                            <span class="text-[11px] font-semibold text-amber-600">{{ "%.0f"|format(entry.carbs_g) }}<span class="font-normal text-amber-400">g C</span></span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <div class="w-1.5 h-1.5 rounded-full bg-rose-400 flex-shrink-0"></div>
+                            <span class="text-[11px] font-semibold text-rose-600">{{ "%.0f"|format(entry.fat_g) }}<span class="font-normal text-rose-400">g F</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Delete button -->
+                <button hx-delete="/entries/{{ entry.id }}"
+                        hx-target="#entry-list"
+                        hx-swap="outerHTML"
+                        hx-confirm="Remove this entry?"
+                        class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all mt-1"
+                        title="Delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                    </svg>
+                </button>
+            </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+</div>

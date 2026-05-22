@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>{% block title %}CalPal{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            50: '#fef3f2', 100: '#fee4e2', 200: '#ffcdc9', 300: '#feaba3',
+                            400: '#fb7e6e', 500: '#f2553f', 600: '#e03a21', 700: '#bc2c16',
+                            800: '#9c2818', 900: '#81271c',
+                        },
+                        accent: {
+                            50: '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 300: '#fcd34d',
+                            400: '#fbbf24', 500: '#f59e0b', 600: '#d97706', 700: '#b45309',
+                        },
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+        body { background: #f2f2f7; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        
+        /* Summary card gradient */
+        .summary-card {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%);
+        }
+        
+        /* Calorie ring */
+        .cal-ring { 
+            stroke-dasharray: 289; stroke-dashoffset: 0; 
+            transform: rotate(-90deg); transform-origin: 50% 50%;
+            transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Entry card */
+        .entry-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .entry-card:active { transform: scale(0.985); }
+        
+        /* Macro progress bar */
+        .macro-fill { height: 4px; border-radius: 2px; transition: width 0.6s ease; }
+        
+        /* Date pill */
+        .date-pill {
+            padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+            transition: all 0.2s ease; white-space: nowrap;
+            background: white; color: #64748b; border: 1px solid #e2e8f0;
+        }
+        .date-pill.active { background: #1e293b; color: white; border-color: #1e293b; }
+        .date-pill:active { transform: scale(0.95); }
+        
+        /* FAB */
+        .fab {
+            position: fixed; bottom: 24px; right: 50%; transform: translateX(50%);
+            width: 56px; height: 56px; border-radius: 50%;
+            background: #e03a21; color: white;
+            box-shadow: 0 4px 14px rgba(224,58,33,0.4);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; user-select: none;
+            transition: all 0.2s ease; z-index: 40;
+            font-size: 24px;
+        }
+        .fab:active { transform: translateX(50%) scale(0.92); box-shadow: 0 2px 8px rgba(224,58,33,0.4); }
+        
+        /* Upload overlay */
+        .upload-overlay { 
+            position: fixed; inset: 0; z-index: 50; 
+            background: rgba(0,0,0,0.6); 
+            display: flex; align-items: flex-end;
+            backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+        }
+        
+        /* Fade/keyframe */
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        .fade-in { animation: fadeIn 0.35s ease-out; }
+        
+        /* Loading dots */
+        .loading-dots span { animation: pulse-dot 1.2s infinite; }
+        .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+        
+        /* Hide default file input */
+        .file-input-hidden { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+        
+        /* Scroll date strip */
+        .date-strip { -ms-overflow-style: none; scrollbar-width: none; }
+        .date-strip::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="min-h-screen pb-24">
+    <!-- Header -->
+    <header class="summary-card text-white sticky top-0 z-30">
+        <div class="max-w-lg mx-auto px-5 pt-4 pb-1">
+            <div class="flex items-center justify-between mb-3">
+                <h1 class="text-lg font-bold tracking-tight">CalPal</h1>
+                <span class="text-xs text-white/60 font-medium">{{ today }}</span>
+            </div>
+            
+            <!-- Date strip -->
+            <div class="flex gap-1.5 date-strip overflow-x-auto pb-3">
+                {% for d in recent_dates %}
+                <a href="/day/{{ d.date }}" 
+                   class="date-pill flex-shrink-0 {% if today == d.date %}active{% endif %}"
+                   hx-get="/day/{{ d.date }}" hx-target="#entry-list" hx-swap="outerHTML">
+                    {{ d.label }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-lg mx-auto px-4 pt-4" id="page-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Floating Upload Button -->
+    <div class="fab" onclick="document.getElementById('upload-overlay').classList.remove('hidden')">📸</div>
+
+    <!-- Upload Overlay (bottom sheet) -->
+    <div id="upload-overlay" class="upload-overlay hidden" onclick="if(event.target===this) this.classList.add('hidden')">
+        <div class="slide-up w-full max-w-lg mx-auto bg-white rounded-t-3xl px-5 pt-6 pb-8 shadow-2xl">
+            <div class="flex items-center justify-between mb-5">
+                <h2 class="text-lg font-bold text-gray-900">Log a Meal</h2>
+                <button onclick="document.getElementById('upload-overlay').classList.add('hidden')"
+                        class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            
+            <form id="upload-form"
+                  hx-post="/upload"
+                  hx-target="#entry-list"
+                  hx-swap="outerHTML"
+                  hx-encoding="multipart/form-data"
+                  enctype="multipart/form-data"
+                  hx-on::after-request="document.getElementById('upload-overlay').classList.add('hidden'); this.reset();">
+                
+                <!-- Photo area -->
+                <div class="relative border-2 border-dashed border-gray-200 rounded-2xl p-8 mb-4 text-center hover:border-brand-300 transition-colors cursor-pointer bg-gray-50/50">
+                    <input type="file" name="image" accept="image/*" capture="environment" required
+                           class="file-input-hidden"
+                           onchange="document.getElementById('file-name').textContent = this.files[0]?.name || 'Tap to take a photo'">
+                    <div class="text-4xl mb-2">📸</div>
+                    <p id="file-name" class="text-sm font-medium text-gray-600">Tap to take a photo</p>
+                    <p class="text-xs text-gray-400 mt-1">or choose from gallery</p>
+                </div>
+                
+                <!-- Description -->
+                <div class="mb-4">
+                    <input type="text" name="description" placeholder="Add notes (homemade, with butter, etc.)"
+                           class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-300 focus:bg-white transition-all"
+                           autocomplete="off">
+                </div>
+                
+                <button type="submit" 
+                        class="w-full py-3.5 bg-brand-600 text-white rounded-xl font-semibold text-sm 
+                               hover:bg-brand-700 active:bg-brand-800 transition-colors">
+                    ✨ Analyze & Log
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 flex items-center justify-center bg-black/50 z-[60] hidden backdrop-blur-sm">
+        <div class="bg-white rounded-2xl px-8 py-6 shadow-xl text-center fade-in">
+            <div class="text-4xl mb-3">🔍</div>
+            <p class="text-gray-800 font-semibold mb-1">Analyzing your meal</p>
+            <p class="text-gray-400 text-sm loading-dots">
+                <span>●</span> <span>●</span> <span>●</span>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Send client timezone on every HTMX request
+        document.body.addEventListener('htmx:configRequest', function(evt) {
+            evt.detail.headers['X-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        });
+
+        // Loading overlay on upload
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            if (evt.detail.elt.id === 'upload-form') {
+                document.getElementById('loading-overlay').classList.remove('hidden');
+            }
+        });
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            document.getElementById('loading-overlay').classList.add('hidden');
+        });
+        document.body.addEventListener('htmx:responseError', function(evt) {
+            document.getElementById('loading-overlay').classList.add('hidden');
+            let msg = 'Something went wrong. Please try again.';
+            if (evt.detail.xhr.status === 429) {
+                msg = evt.detail.xhr.responseText || 'API quota exceeded. Please try again later.';
+            }
+            alert(msg.replace(/^"|"$/g, ''));
+        });
+    </script>
+</body>
+</html>

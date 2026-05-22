@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}{{ label if label else today }} - CalPal{% endblock %}
+
+{% block content %}
+{% include "partials/_entry_list.html" %}
+{% endblock %}
