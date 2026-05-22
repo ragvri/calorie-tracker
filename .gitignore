@@ -12,6 +12,10 @@ data/
 .vscode/
 .idea/
 
+# AI assistant artifacts
+.codex/
+.claude/
+
 # Environment
 .env
 .env.local
