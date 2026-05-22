@@ -90,7 +90,7 @@ This app is deployed on a home server behind **Traefik** (reverse proxy with aut
 ### Stack used here
 
 ```
-Duck DNS (calories.crazystremio.duckdns.org)
+Duck DNS (yourdomain.duckdns.org)
     ↓
 Traefik (auto HTTPS via Let's Encrypt)
     ↓
@@ -106,7 +106,7 @@ Traefik routes requests through Authelia via a middleware (`authelia@docker`). T
 ```yaml
 labels:
   - "traefik.enable=true"
-  - "traefik.http.routers.calorie-tracker.rule=Host(`calories.crazystremio.duckdns.org`)"
+  - "traefik.http.routers.calorie-tracker.rule=Host(`yourdomain.duckdns.org`)"
   - "traefik.http.routers.calorie-tracker.entrypoints=websecure"
   - "traefik.http.routers.calorie-tracker.tls.certresolver=letsencrypt"
   - "traefik.http.routers.calorie-tracker.middlewares=authelia@docker"
