@@ -1,7 +1,7 @@
 import io
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 def compress_image(input_bytes: bytes, output_path: Path, max_width: int = 800, quality: int = 80) -> None:
@@ -17,6 +17,9 @@ def compress_image(input_bytes: bytes, output_path: Path, max_width: int = 800, 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     image = Image.open(io.BytesIO(input_bytes))
+
+    # Fix EXIF orientation (prevents sideways/upside-down phone photos)
+    image = ImageOps.exif_transpose(image)
 
     # Convert RGBA/P to RGB for JPEG
     if image.mode in ("RGBA", "P"):
