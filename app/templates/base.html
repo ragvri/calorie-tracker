@@ -60,14 +60,11 @@
 
         /* Expanded entry card */
         .entry-card.expanded { padding-bottom: 14px; }
-        .entry-card .expanded-truncate { white-space: normal; }
-        .entry-card.expanded .expanded-truncate { white-space: normal; }
-        .entry-card .expanded-line-clamp { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+        .entry-card.expanded .expanded-truncate { white-space: normal !important; }
         .entry-card.expanded .expanded-line-clamp { display: block; -webkit-line-clamp: unset; overflow: visible; }
-        .entry-card .expanded-opacity { opacity: 0; transition: opacity 0.2s ease; }
-        .entry-card.expanded .expanded-opacity { opacity: 1; }
-        .entry-card .expanded-chevron { transition: transform 0.2s ease; }
-        .entry-card.expanded .expanded-chevron { transform: rotate(180deg); }
+        .entry-card .expansion-indicator { opacity: 0.5; transition: opacity 0.2s; }
+        .entry-card .chevron-icon { transition: transform 0.25s ease; }
+        .entry-card.expanded .chevron-icon { transform: rotate(180deg); }
         .entry-card .expanded-image { transition: all 0.25s ease; }
         .entry-card.expanded .expanded-image { width: 110px; height: 110px; }
         
