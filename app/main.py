@@ -50,12 +50,12 @@ def _get_client_tz(
 def _get_calorie_goal(
     goal_cookie: str | None = Cookie(None, alias="calorie_goal"),
 ) -> int:
-    """Read the daily calorie goal from a cookie, default 2400."""
+    """Read the daily calorie goal from a cookie, default 2000."""
     if goal_cookie and goal_cookie.lstrip("-").isdigit():
         g = int(goal_cookie)
         if 500 <= g <= 10000:
             return g
-    return 2400
+    return 2000
 
 
 def _today(tz: ZoneInfo) -> date:
