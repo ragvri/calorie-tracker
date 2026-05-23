@@ -12,6 +12,8 @@
     <script src="/static/htmx.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        // Guard: don't crash if CDN is slow/blocked
+        window.tailwind = window.tailwind || {};
         tailwind.config = {
             theme: {
                 extend: {
