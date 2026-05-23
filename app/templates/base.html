@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="/static/htmx.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -238,7 +238,7 @@
 
         // Layer 1: Set a cookie so the server can read it on initial page loads
         // (path=/ ensures the cookie is sent on all routes)
-        document.cookie = 'tz=' + encodeURIComponent(CLIENT_TZ) + ';path=/;SameSite=Lax;max-age=31536000';
+        document.cookie = 'tz=' + CLIENT_TZ + ';path=/;SameSite=Lax;max-age=31536000';
 
         // Layer 2: Send X-Timezone header on every HTMX request (primary mechanism)
         document.body.addEventListener('htmx:configRequest', function(evt) {
