@@ -12,7 +12,6 @@
     <script src="/static/htmx.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // Guard: don't crash if CDN is slow/blocked
         window.tailwind = window.tailwind || {};
         tailwind.config = {
             theme: {
@@ -217,7 +216,7 @@
     <div id="loading-overlay" class="fixed inset-0 flex items-center justify-center bg-black/50 z-[60] hidden backdrop-blur-sm">
         <div class="bg-white rounded-2xl px-8 py-6 shadow-xl text-center fade-in">
             <div class="text-4xl mb-3">🔍</div>
-            <p class="text-gray-800 font-semibold mb-1">Analyzing your meal</p>
+            <p class="text-gray-800 font-semibold mb-1" id="loading-message">Analyzing your meal</p>
             <p class="text-gray-400 text-sm loading-dots">
                 <span>●</span> <span>●</span> <span>●</span>
             </p>
@@ -227,45 +226,6 @@
     <script>
         // --- Timezone handling (three layers) ---
         const CLIENT_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-        // --- Attach click handlers to interactive elements ---
-        function attachHandlers() {
-            // Why? buttons
-            document.querySelectorAll('[data-why]').forEach(function(el) {
-                el.onclick = function() {
-                    var reasonDiv = document.getElementById(this.getAttribute('data-why'));
-                    if (reasonDiv) {
-                        var open = reasonDiv.classList.toggle('hidden');
-                        this.innerHTML = open ? '💡 Why?' : '💡 Hide';
-                    }
-                };
-            });
-            // Refine buttons
-            document.querySelectorAll('[data-refine]').forEach(function(el) {
-                el.onclick = function() {
-                    var rid = this.getAttribute('data-refine');
-                    this.classList.add('hidden');
-                    var form = document.getElementById('refine-form-' + rid);
-                    if (form) form.classList.remove('hidden');
-                    var input = document.getElementById('refine-input-' + rid);
-                    if (input) input.focus();
-                };
-            });
-            // Refine cancel
-            document.querySelectorAll('[data-refine-cancel]').forEach(function(el) {
-                el.onclick = function() {
-                    var cid = this.getAttribute('data-refine-cancel');
-                    var cf = document.getElementById('refine-form-' + cid);
-                    if (cf) cf.classList.add('hidden');
-                    var rb = document.querySelector('[data-refine="' + cid + '"]');
-                    if (rb) rb.classList.remove('hidden');
-                };
-            });
-        }
-        // Run on load and after HTMX swaps
-        attachHandlers();
-        document.body.addEventListener('htmx:afterSwap', attachHandlers);
-        document.body.appendChild(indicator);
 
         // Layer 1: Set a cookie so the server can read it on initial page loads
         // (path=/ ensures the cookie is sent on all routes)
@@ -282,10 +242,16 @@
             }
         });
 
-        // Loading overlay on upload
+        // Loading overlay on upload or refine
         document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            var overlay = document.getElementById('loading-overlay');
+            var msg = document.getElementById('loading-message');
             if (evt.detail.elt.id === 'upload-form') {
-                document.getElementById('loading-overlay').classList.remove('hidden');
+                msg.textContent = 'Analyzing your meal';
+                overlay.classList.remove('hidden');
+            } else if (evt.detail.elt.id && evt.detail.elt.id.startsWith('refine-form-')) {
+                msg.textContent = 'Refining estimate';
+                overlay.classList.remove('hidden');
             }
         });
         document.body.addEventListener('htmx:afterRequest', function(evt) {

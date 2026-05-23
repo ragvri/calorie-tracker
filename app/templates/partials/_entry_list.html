@@ -5,18 +5,7 @@
             <span class="text-sm font-semibold text-white/80">
                 {% if label %}{{ label }}{% else %}Today{% endif %}
             </span>
-            <!-- Editable goal -->
-            <span id="goal-display"
-                  class="text-[11px] text-white/50 font-medium cursor-pointer hover:text-white/80 transition-colors"
-                  onclick="this.classList.add('hidden');var e=document.getElementById('goal-edit');e.classList.remove('hidden');document.getElementById('goal-input').focus();document.getElementById('goal-input').select()">
-                goal {{ goal }} kcal ✎
-            </span>
-            <span id="goal-edit" class="hidden">
-                <input id="goal-input" type="number" value="{{ goal }}" min="500" max="10000" step="50"
-                       class="w-20 bg-white/15 text-white text-[11px] font-medium rounded-lg px-2 py-0.5 border border-white/20 focus:outline-none focus:border-white/40 text-center"
-                       onkeydown="if(event.key==='Enter'){var v=parseInt(this.value)||2000;v=Math.max(500,Math.min(10000,v));document.cookie='calorie_goal='+v+';path=/;SameSite=Lax;max-age=31536000';htmx.ajax('GET','/day/{{ today }}',{target:'#entry-list',swap:'outerHTML'})}"
-                       onblur="this.value=parseInt(this.value)||{{ goal }};document.getElementById('goal-edit').classList.add('hidden');document.getElementById('goal-display').classList.remove('hidden')">
-            </span>
+            <span class="text-[11px] text-white/50 font-medium">goal 2,400 kcal</span>
         </div>
 
         <div class="flex items-center gap-5">
@@ -24,6 +13,7 @@
             <div class="relative flex-shrink-0">
                 <svg width="100" height="100" viewBox="0 0 100 100">
                     <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="7"/>
+                    {% set goal = 2400 %}
                     {% set pct = (totals.calories / goal * 100)|round(1) %}
                     {% if pct > 100 %}{% set pct = 100 %}{% endif %}
                     {% set offset = 276.5 - (276.5 * (pct / 100)) %}
@@ -99,21 +89,14 @@
         </div>
         {% else %}
             {% for entry in entries %}
-            <div class="entry-card flex gap-3.5 p-3.5 items-start fade-in relative" id="entry-{{ entry.id }}">
-                <!-- Per-card loading overlay (shown during refine) -->
-                <div class="htmx-indicator absolute inset-0 bg-white/70 rounded-2xl flex items-center justify-center z-10">
-                    <div class="flex items-center gap-2 text-sm text-gray-500">
-                        <span class="inline-block w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></span>
-                        <span class="text-xs font-medium">Updating...</span>
-                    </div>
-                </div>
+            <div class="entry-card flex gap-3.5 p-3.5 items-start fade-in" id="entry-{{ entry.id }}">
                 <!-- Food image -->
                 {% if entry.image_url %}
-                <div class="flex-shrink-0 w-[80px] h-[80px] rounded-2xl overflow-hidden bg-gray-100 shadow-sm expanded-image">
+                <div class="flex-shrink-0 w-[80px] h-[80px] rounded-2xl overflow-hidden bg-gray-100 shadow-sm">
                     <img src="{{ entry.image_url }}" alt="{{ entry.food_name }}" class="w-full h-full object-cover" loading="lazy">
                 </div>
                 {% else %}
-                <div class="flex-shrink-0 w-[80px] h-[80px] rounded-2xl bg-gray-50 flex items-center justify-center text-3xl shadow-sm expanded-image">
+                <div class="flex-shrink-0 w-[80px] h-[80px] rounded-2xl bg-gray-50 flex items-center justify-center text-3xl shadow-sm">
                     🥘
                 </div>
                 {% endif %}
@@ -122,7 +105,7 @@
                 <div class="flex-1 min-w-0">
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                            <h3 class="font-semibold text-gray-900 text-sm leading-tight truncate expanded-truncate">{{ entry.food_name }}</h3>
+                            <h3 class="font-semibold text-gray-900 text-sm leading-tight truncate">{{ entry.food_name }}</h3>
                             <div class="flex items-center gap-1.5 mt-0.5">
                                 <span class="text-[11px] text-gray-400 font-medium">{{ entry.time }}</span>
                                 {% if entry.serving_size %}
@@ -143,7 +126,7 @@
                     </div>
 
                     {% if entry.description %}
-                    <p class="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-1 expanded-line-clamp">{{ entry.description }}</p>
+                    <p class="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-1">{{ entry.description }}</p>
                     {% endif %}
 
                     <!-- Macro pills -->
@@ -156,10 +139,10 @@
                     <!-- Reasoning (collapsible) -->
                     {% if entry.reasoning %}
                     <div class="mt-2.5">
-                        <span data-why="reason-{{ entry.id }}"
-                                class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors cursor-pointer py-1 px-1.5 -ml-1.5 rounded">
+                        <button onclick="var r=document.getElementById('reason-{{ entry.id }}'); var open = r.classList.toggle('hidden'); this.innerHTML = open ? '💡 Why?' : '💡 Hide'"
+                                class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors">
                             💡 Why?
-                        </span>
+                        </button>
                         <div id="reason-{{ entry.id }}" class="hidden mt-2 text-[11px] text-gray-600 leading-relaxed border-l-2 border-amber-200 bg-amber-50/50 rounded-r-lg pl-3 pr-2.5 py-2">
                             {{ entry.reasoning }}
                         </div>
@@ -168,26 +151,27 @@
 
                     <!-- Refine button / form -->
                     <div class="mt-2.5" id="refine-area-{{ entry.id }}">
-                        <span data-refine="{{ entry.id }}"
-                                class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors cursor-pointer py-1 px-1.5 -ml-1.5 rounded">
+                        <button onclick="this.classList.add('hidden'); document.getElementById('refine-form-{{ entry.id }}').classList.remove('hidden'); document.getElementById('refine-input-{{ entry.id }}').focus()"
+                                class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors">
                             ✏️ Refine
-                        </span>
+                        </button>
                         <form id="refine-form-{{ entry.id }}" class="hidden flex items-center gap-1.5"
                               hx-post="/entries/{{ entry.id }}/refine"
                               hx-target="#entry-list"
                               hx-swap="outerHTML"
                               hx-encoding="application/x-www-form-urlencoded"
-                              hx-indicator="#entry-{{ entry.id }}">
+                              hx-indicator="#refine-spinner-{{ entry.id }}">
                             <input type="text" name="message" id="refine-input-{{ entry.id }}"
                                    placeholder="e.g. it's brown rice, half portion..."
                                    class="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[11px] bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-300 focus:bg-white transition-all"
                                    autocomplete="off">
                             <button type="submit"
                                     class="flex-shrink-0 px-3 py-1.5 bg-brand-600 text-white rounded-lg text-[11px] font-semibold hover:bg-brand-700 transition-colors">
+                                <span id="refine-spinner-{{ entry.id }}" class="htmx-indicator inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-0.5 align-middle"></span>
                                 Go
                             </button>
                             <button type="button"
-                                    data-refine-cancel="{{ entry.id }}"
+                                    onclick="var f=this.parentElement; f.classList.add('hidden'); f.previousElementSibling.classList.remove('hidden')"
                                     class="flex-shrink-0 text-gray-400 hover:text-gray-600 text-sm leading-none px-1">
                                 ×
                             </button>
