@@ -17,6 +17,10 @@ class FoodAnalysis(BaseModel):
         description="Confidence level: high, medium, or low",
         pattern=r"^(high|medium|low)$",
     )
+    reasoning: str = Field(
+        default="",
+        description="Brief explanation of how the estimate was derived: what ingredients were identified, portion assumptions, and key calculations. 1-3 sentences.",
+    )
 
 
 class FoodEntryResponse(BaseModel):
@@ -33,6 +37,7 @@ class FoodEntryResponse(BaseModel):
     serving_size: Optional[str]
     image_url: Optional[str]
     confidence: str
+    reasoning: str
 
 
 class DaySummary(BaseModel):

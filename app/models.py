@@ -21,6 +21,7 @@ class FoodEntry(Base):
     fat_g: Mapped[float] = mapped_column(Float)
     serving_size: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     confidence: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    reasoning: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     image_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 

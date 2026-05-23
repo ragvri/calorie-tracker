@@ -92,7 +92,9 @@ FOOD_ANALYSIS_PROMPT = """You are a precise and conservative nutritionist. Analy
 
 7. **serving_size:** Use real-world descriptions like "1 bowl", "2 slices", "~300g", "1 plate". Be as specific as possible.
 
-8. **food_name:** Use clear, descriptive names: "Grilled chicken with rice and broccoli", not just "chicken". 
+8. **food_name:** Use clear, descriptive names: "Grilled chicken with rice and broccoli", not just "chicken".
+
+9. **reasoning:** Write 1-3 sentences explaining HOW you arrived at the estimate. Be specific: what ingredients you identified, what portion sizes you assumed, and any calculations. Example: "I see approximately 1 cup of white rice (~240 kcal), a palm-sized grilled chicken breast (~200 kcal), and ~1 cup steamed broccoli (~55 kcal) with what looks like 1 tbsp olive oil drizzle (~120 kcal). Total: ~615 kcal."
 
 If there is NO food in the image, set calories/macros to 0 and confidence to "low". Otherwise, always provide a non-zero estimate."""  # noqa: E501
 
@@ -159,3 +161,104 @@ def analyze_food_image(image_path: Path, description: str = "") -> FoodAnalysis:
                     break
 
     raise last_error or RuntimeError("All Gemini models failed")
+
+
+def refine_food_estimate(
+    *,
+    food_name: str,
+    calories: float,
+    protein_g: float,
+    carbs_g: float,
+    fat_g: float,
+    serving_size: str,
+    confidence: str,
+    description: str,
+    user_message: str,
+    image_path: Path | None = None,
+) -> FoodAnalysis:
+    """Re-estimate a food entry based on user correction/follow-up."""
+    client = _get_client()
+
+    prompt = f"""You are a nutritionist. A previous food estimate needs correction based on user feedback.
+
+## ORIGINAL ESTIMATE
+- Food: {food_name}
+- Calories: {calories} kcal
+- Protein: {protein_g}g, Carbs: {carbs_g}g, Fat: {fat_g}g
+- Serving size: {serving_size or "unknown"}
+- Confidence: {confidence}
+- Notes: {description or "none"}
+
+## USER CORRECTION
+{user_message}
+
+## INSTRUCTIONS
+Re-estimate the nutritional content based on the user's correction. Only change values that the correction affects. Keep the same food_name unless the user explicitly renames the food. Update reasoning to explain what changed and why.
+
+Use your nutrition knowledge and the reference table:
+- Chicken breast (cooked, 100g): 165 kcal, 31g P, 0g C, 3.6g F
+- Chicken thigh (cooked, 100g): 209 kcal, 26g P, 0g C, 11g F
+- Beef (lean, cooked, 100g): 250 kcal, 26g P, 0g C, 15g F
+- Salmon (cooked, 100g): 208 kcal, 20g P, 0g C, 13g F
+- White rice (cooked, 1 cup/200g): 240 kcal, 5.4g P, 56g C, 0.6g F
+- Brown rice (cooked, 1 cup/200g): 246 kcal, 5.4g P, 52g C, 2g F
+- Pasta (cooked, 1 cup/200g): 316 kcal, 11.6g P, 62g C, 1.8g F
+- Bread (white, 1 slice/30g): 80 kcal, 2.7g P, 14.7g C, 1g F
+- Potato (boiled, 100g): 87 kcal, 1.9g P, 20g C, 0.1g F
+- French fries (100g): 312 kcal, 3.4g P, 41g C, 15g F
+- Egg (large): 78 kcal, 6.3g P, 0.6g C, 5.3g F
+- Cheese (cheddar, 1 slice/28g): 113 kcal, 7g P, 0.4g C, 9.3g F
+- Olive oil (1 tbsp): 119 kcal, 0g P, 0g C, 13.5g F
+- Butter (1 tbsp): 102 kcal, 0.1g P, 0g C, 11.5g F
+- Avocado (1/2 medium): 160 kcal, 2g P, 8.5g C, 14.7g F
+- Milk (whole, 1 cup): 149 kcal, 8g P, 12g C, 8g F
+- Pizza (1 slice, 14"): 285 kcal, 12g P, 36g C, 10g F
+- Burger (fast food): 540 kcal, 34g P, 40g C, 27g F
+
+When uncertain, use the HIGHER estimate."""
+
+    contents = [prompt]
+    if image_path:
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+        contents.append(types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"))
+
+    last_error = None
+    for model_idx in range(len(GEMINI_MODELS)):
+        model = GEMINI_MODELS[model_idx]
+        if model_idx > 0:
+            logger.info("Refine: trying fallback model: %s", model)
+
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=FoodAnalysis,
+                        temperature=0.1,
+                    ),
+                )
+
+                if hasattr(response, "parsed") and response.parsed is not None:
+                    logger.info("Refine (%s) returned: %s", model, response.parsed.model_dump())
+                    return response.parsed
+
+                data = json.loads(response.text)
+                return FoodAnalysis(**data)
+
+            except Exception as e:
+                error_str = str(e)
+                last_error = e
+                logger.warning("Refine (%s) attempt %d: %s", model, attempt + 1, error_str[:200])
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    retry_sec = _extract_retry_delay(error_str)
+                    if attempt < 1:
+                        wait = min(retry_sec + 1, 15)
+                        time.sleep(wait)
+                        continue
+                else:
+                    break
+
+    raise last_error or RuntimeError("Refine: all Gemini models failed")

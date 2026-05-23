@@ -125,6 +125,13 @@
         /* Scroll date strip */
         .date-strip { -ms-overflow-style: none; scrollbar-width: none; }
         .date-strip::-webkit-scrollbar { display: none; }
+
+        /* HTMX indicator spinner */
+        .htmx-indicator { display: none; }
+        .htmx-request .htmx-indicator { display: inline-block; }
+        .htmx-request.htmx-indicator { display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 0.6s linear infinite; }
     </style>
 </head>
 <body class="min-h-screen pb-24">
@@ -208,7 +215,7 @@
     <div id="loading-overlay" class="fixed inset-0 flex items-center justify-center bg-black/50 z-[60] hidden backdrop-blur-sm">
         <div class="bg-white rounded-2xl px-8 py-6 shadow-xl text-center fade-in">
             <div class="text-4xl mb-3">🔍</div>
-            <p class="text-gray-800 font-semibold mb-1">Analyzing your meal</p>
+            <p class="text-gray-800 font-semibold mb-1" id="loading-message">Analyzing your meal</p>
             <p class="text-gray-400 text-sm loading-dots">
                 <span>●</span> <span>●</span> <span>●</span>
             </p>
@@ -234,10 +241,16 @@
             }
         });
 
-        // Loading overlay on upload
+        // Loading overlay on upload or refine
         document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            var overlay = document.getElementById('loading-overlay');
+            var msg = document.getElementById('loading-message');
             if (evt.detail.elt.id === 'upload-form') {
-                document.getElementById('loading-overlay').classList.remove('hidden');
+                msg.textContent = 'Analyzing your meal';
+                overlay.classList.remove('hidden');
+            } else if (evt.detail.elt.id && evt.detail.elt.id.startsWith('refine-form-')) {
+                msg.textContent = 'Refining estimate';
+                overlay.classList.remove('hidden');
             }
         });
         document.body.addEventListener('htmx:afterRequest', function(evt) {

@@ -8,11 +8,12 @@ from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, HTTPExcep
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal, engine, Base, DATA_DIR
 from .models import FoodEntry
-from .gemini_client import analyze_food_image
+from .gemini_client import analyze_food_image, refine_food_estimate
 from .image_utils import compress_image
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,13 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    # Migration: add reasoning column if it doesn't exist yet
+    with engine.connect() as conn:
+        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(food_entries)")).fetchall()]
+        if "reasoning" not in cols:
+            conn.execute(text("ALTER TABLE food_entries ADD COLUMN reasoning TEXT"))
+            conn.commit()
+            logger.info("Added reasoning column to food_entries")
     logger.info("Database tables created")
 
 
@@ -116,6 +124,7 @@ def _entry_to_dict(entry: FoodEntry) -> dict:
         "fat_g": entry.fat_g,
         "serving_size": entry.serving_size or "",
         "confidence": entry.confidence or "unknown",
+        "reasoning": entry.reasoning or "",
         "image_url": f"/images/{entry.image_path}" if entry.image_path else None,
     }
 
@@ -224,6 +233,7 @@ async def upload_food(
         fat_g=analysis.fat_g,
         serving_size=analysis.serving_size,
         confidence=analysis.confidence,
+        reasoning=analysis.reasoning or None,
         image_path=f"{today_str}/{image_id}.jpg",
     )
     db.add(entry)
@@ -315,3 +325,70 @@ async def delete_entry(entry_id: int, request: Request, db: Session = Depends(_g
         )
 
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/entries/{entry_id}/refine")
+async def refine_entry(
+    entry_id: int,
+    request: Request,
+    message: str = Form(...),
+    db: Session = Depends(_get_db),
+    tz: ZoneInfo = Depends(_get_client_tz),
+):
+    """Refine an existing food entry based on user correction."""
+    entry = db.query(FoodEntry).filter(FoodEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+
+    if not message.strip():
+        raise HTTPException(400, "Refinement message is required")
+
+    # Build image path if available
+    image_path = IMAGES_DIR / entry.image_path if entry.image_path else None
+    if image_path and not image_path.exists():
+        image_path = None
+
+    try:
+        updated = refine_food_estimate(
+            food_name=entry.food_name,
+            calories=entry.calories,
+            protein_g=entry.protein_g,
+            carbs_g=entry.carbs_g,
+            fat_g=entry.fat_g,
+            serving_size=entry.serving_size or "",
+            confidence=entry.confidence or "medium",
+            description=entry.description or "",
+            user_message=message.strip(),
+            image_path=image_path,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Refine failed: %s", e)
+        raise HTTPException(500, f"Refinement failed: {str(e)[:200]}")
+
+    # Update the entry in-place
+    entry.food_name = updated.food_name
+    entry.calories = updated.estimated_calories
+    entry.protein_g = updated.protein_g
+    entry.carbs_g = updated.carbs_g
+    entry.fat_g = updated.fat_g
+    entry.serving_size = updated.serving_size
+    entry.confidence = updated.confidence
+    entry.reasoning = updated.reasoning or None
+    db.commit()
+    db.refresh(entry)
+
+    # Reload the day's data and return the updated entry list
+    today_str = entry.date
+    entries, totals = _get_day_data(db, today_str)
+    return templates.TemplateResponse(
+        request,
+        "partials/_entry_list.html",
+        {
+            "today": today_str,
+            "label": "",
+            "entries": [_entry_to_dict(e) for e in entries],
+            "totals": totals,
+        },
+    )
