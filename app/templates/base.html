@@ -245,40 +245,55 @@
         indicator.onclick = function(){ alert('Click works! JS is alive.'); };
         document.body.appendChild(indicator);
 
-        // --- Delegated click handlers (avoid inline onclick CSP issues) ---
+        // Debug: click counter
+        var debugBox = document.createElement('div');
+        debugBox.id = 'click-debug';
+        debugBox.style.cssText = 'position:fixed;bottom:120px;right:16px;background:#1e293b;color:#fff;font-size:11px;padding:2px 8px;border-radius:6px;z-index:999;font-family:monospace';
+        debugBox.textContent = 'clicks: 0';
+        document.body.appendChild(debugBox);
+        var clickCount = 0;
+
+        // --- Delegated click handlers ---
         document.body.addEventListener('click', function(e) {
-            // Expand/collapse entry cards — click the details area
+            clickCount++;
+            debugBox.textContent = 'clicks: ' + clickCount;
+
+            // Card expand: click anywhere on card except interactive elements
             var card = e.target.closest('.entry-card');
-            var details = e.target.closest('.flex-1.min-w-0.cursor-pointer');
-            if (details && !e.target.closest('[onclick]') && !e.target.closest('button') && !e.target.closest('input') && !e.target.closest('form')) {
-                card.classList.toggle('expanded');
-                return;
+            if (card) {
+                var skip = e.target.closest('button,input,form,[data-why],[data-refine],[data-refine-cancel]');
+                if (!skip) {
+                    card.classList.toggle('expanded');
+                    return;
+                }
             }
-            // Toggle reasoning (Why? button)
+            // Why? button
             var whyBtn = e.target.closest('[data-why]');
             if (whyBtn) {
-                var reasonId = whyBtn.getAttribute('data-why');
-                var reasonDiv = document.getElementById(reasonId);
+                var reasonDiv = document.getElementById(whyBtn.getAttribute('data-why'));
                 var open = reasonDiv.classList.toggle('hidden');
                 whyBtn.innerHTML = open ? '💡 Why?' : '💡 Hide';
                 return;
             }
-            // Show refine form
+            // Refine button
             var refineBtn = e.target.closest('[data-refine]');
             if (refineBtn) {
-                var entryId = refineBtn.getAttribute('data-refine');
+                var rid = refineBtn.getAttribute('data-refine');
                 refineBtn.classList.add('hidden');
-                document.getElementById('refine-form-' + entryId).classList.remove('hidden');
-                document.getElementById('refine-input-' + entryId).focus();
+                var form = document.getElementById('refine-form-' + rid);
+                if (form) { form.classList.remove('hidden'); }
+                var input = document.getElementById('refine-input-' + rid);
+                if (input) { input.focus(); }
                 return;
             }
-            // Hide refine form (× button)
+            // Refine cancel
             var cancelBtn = e.target.closest('[data-refine-cancel]');
             if (cancelBtn) {
                 var cid = cancelBtn.getAttribute('data-refine-cancel');
-                var form = document.getElementById('refine-form-' + cid);
-                form.classList.add('hidden');
-                document.querySelector('[data-refine="' + cid + '"]').classList.remove('hidden');
+                var cf = document.getElementById('refine-form-' + cid);
+                if (cf) { cf.classList.add('hidden'); }
+                var rb = document.querySelector('[data-refine="' + cid + '"]');
+                if (rb) { rb.classList.remove('hidden'); }
                 return;
             }
         });

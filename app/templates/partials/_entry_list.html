@@ -156,7 +156,7 @@
                     <!-- Reasoning (collapsible) -->
                     {% if entry.reasoning %}
                     <div class="mt-2.5">
-                        <button onclick="var r=document.getElementById('reason-{{ entry.id }}'); var open = r.classList.toggle('hidden'); this.innerHTML = open ? '💡 Why?' : '💡 Hide'"
+                        <button data-why="reason-{{ entry.id }}"
                                 class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors">
                             💡 Why?
                         </button>
@@ -167,8 +167,8 @@
                     {% endif %}
 
                     <!-- Refine button / form -->
-                    <div class="mt-2.5" id="refine-area-{{ entry.id }}" onclick="event.stopPropagation()">
-                        <button onclick="this.classList.add('hidden'); document.getElementById('refine-form-{{ entry.id }}').classList.remove('hidden'); document.getElementById('refine-input-{{ entry.id }}').focus()"
+                    <div class="mt-2.5" id="refine-area-{{ entry.id }}">
+                        <button data-refine="{{ entry.id }}"
                                 class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors">
                             ✏️ Refine
                         </button>
