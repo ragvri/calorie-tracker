@@ -136,7 +136,8 @@
     </main>
 
     <!-- Floating Upload Button -->
-    <div class="fab" onclick="document.getElementById('upload-overlay').classList.remove('hidden')">📸</div>
+    <div class="fab" onclick="document.getElementById('upload-overlay').classList.remove('hidden');
+         var hd = document.getElementById('local-date'); if (hd) hd.value = new Date().toISOString().slice(0, 10);">📸</div>
 
     <!-- Upload Overlay (bottom sheet) -->
     <div id="upload-overlay" class="upload-overlay hidden" onclick="if(event.target===this) this.classList.add('hidden')">
@@ -153,6 +154,7 @@
                   hx-swap="outerHTML"
                   hx-encoding="multipart/form-data"
                   enctype="multipart/form-data"
+                  onsubmit="document.getElementById('local-date').value = new Date().toISOString().slice(0, 10);"
                   hx-on::after-request="document.getElementById('upload-overlay').classList.add('hidden'); this.reset();">
                 
                 <!-- Photo area -->
@@ -166,6 +168,9 @@
                 </div>
                 
                 <!-- Description -->
+                <!-- Hidden: client's local date as belt-and-suspenders fallback -->
+                <input type="hidden" name="local_date" id="local-date" value="">
+
                 <div class="mb-4">
                     <input type="text" name="description" placeholder="Add notes (homemade, with butter, etc.)"
                            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-300 focus:bg-white transition-all"
@@ -193,9 +198,22 @@
     </div>
 
     <script>
-        // Send client timezone on every HTMX request
+        // --- Timezone handling (three layers) ---
+        const CLIENT_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+        // Layer 1: Set a cookie so the server can read it on initial page loads
+        // (path=/ ensures the cookie is sent on all routes)
+        document.cookie = 'tz=' + encodeURIComponent(CLIENT_TZ) + ';path=/;SameSite=Lax;max-age=31536000';
+
+        // Layer 2: Send X-Timezone header on every HTMX request (primary mechanism)
         document.body.addEventListener('htmx:configRequest', function(evt) {
-            evt.detail.headers['X-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            evt.detail.headers['X-Timezone'] = CLIENT_TZ;
+
+            // Layer 3: Also stamp the upload form's hidden local_date field
+            var hiddenDate = document.getElementById('local-date');
+            if (hiddenDate) {
+                hiddenDate.value = new Date().toISOString().slice(0, 10);
+            }
         });
 
         // Loading overlay on upload

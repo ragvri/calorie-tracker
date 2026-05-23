@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, HTTPException, Header, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,16 +23,26 @@ logger = logging.getLogger(__name__)
 TZ_UTC = ZoneInfo("UTC")
 
 
-def _get_client_tz(x_timezone: str | None = Header(None, alias="X-Timezone")) -> ZoneInfo:
-    """Parse the client's timezone from the X-Timezone header.
+def _get_client_tz(
+    x_timezone: str | None = Header(None, alias="X-Timezone"),
+    tz_cookie: str | None = Cookie(None, alias="tz"),
+) -> ZoneInfo:
+    """Parse the client's timezone from the X-Timezone header or tz cookie.
 
-    Falls back to UTC if not provided or invalid.
+    Priority: header > cookie > UTC fallback.
     """
+    candidates = []
     if x_timezone:
+        candidates.append(("header", x_timezone))
+    if tz_cookie:
+        candidates.append(("cookie", tz_cookie))
+
+    for source, tz_str in candidates:
         try:
-            return ZoneInfo(x_timezone)
+            return ZoneInfo(tz_str)
         except Exception:
-            logger.warning("Invalid timezone '%s', falling back to UTC", x_timezone)
+            logger.warning("Invalid timezone from %s: '%s'", source, tz_str)
+
     return TZ_UTC
 
 
@@ -158,16 +168,27 @@ async def upload_food(
     request: Request,
     image: UploadFile = File(...),
     description: str = Form(""),
+    local_date: str | None = Form(None),
     db: Session = Depends(_get_db),
     tz: ZoneInfo = Depends(_get_client_tz),
 ):
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(400, "File must be an image")
 
-    # Save compressed image
+    # Determine today's date in the client's timezone.
+    # Three layers of fallback: timezone-aware datetime > hidden form field > UTC.
     image_id = str(uuid.uuid4())
     now_dt = datetime.now(tz)
     today_str = now_dt.date().isoformat()
+
+    # If we fell back to UTC and the client sent a local_date form field that differs,
+    # trust the client's local date (belt-and-suspenders for CDN / race issues).
+    if tz is TZ_UTC and local_date and local_date != today_str:
+        logger.info(
+            "Overriding UTC date %s with client-reported date %s",
+            today_str, local_date,
+        )
+        today_str = local_date
     day_dir = IMAGES_DIR / today_str
     day_dir.mkdir(parents=True, exist_ok=True)
 
