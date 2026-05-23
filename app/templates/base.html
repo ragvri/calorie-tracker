@@ -59,16 +59,6 @@
         }
         .entry-card:active { transform: scale(0.985); }
         .entry-card:hover { border-left-color: #f2553f; }
-
-        /* Expanded entry card */
-        .entry-card.expanded { padding-bottom: 14px; }
-        .entry-card.expanded .expanded-truncate { white-space: normal !important; }
-        .entry-card.expanded .expanded-line-clamp { display: block; -webkit-line-clamp: unset; overflow: visible; }
-        .entry-card .expansion-indicator { opacity: 0.5; transition: opacity 0.2s; }
-        .entry-card .chevron-icon { transition: transform 0.25s ease; }
-        .entry-card.expanded .chevron-icon { transform: rotate(180deg); }
-        .entry-card .expanded-image { transition: all 0.25s ease; }
-        .entry-card.expanded .expanded-image { width: 110px; height: 110px; }
         
         /* Macro progress bar */
         .macro-fill { height: 5px; border-radius: 3px; transition: width 0.6s ease; }
@@ -238,65 +228,43 @@
         // --- Timezone handling (three layers) ---
         const CLIENT_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-        // Show a dot to confirm JS is running
-        var indicator = document.createElement('div');
-        indicator.id = 'js-ok';
-        indicator.style.cssText = 'position:fixed;bottom:100px;right:16px;width:14px;height:14px;background:#22c55e;border-radius:50%;z-index:999;box-shadow:0 0 6px rgba(34,197,94,0.5);cursor:pointer';
-        indicator.onclick = function(){ alert('Click works! JS is alive.'); };
-        document.body.appendChild(indicator);
-
-        // Debug: click counter
-        var debugBox = document.createElement('div');
-        debugBox.id = 'click-debug';
-        debugBox.style.cssText = 'position:fixed;bottom:120px;right:16px;background:#1e293b;color:#fff;font-size:11px;padding:2px 8px;border-radius:6px;z-index:999;font-family:monospace';
-        debugBox.textContent = 'clicks: 0';
-        document.body.appendChild(debugBox);
-        var clickCount = 0;
-
-        // --- Delegated click handlers ---
-        document.body.addEventListener('click', function(e) {
-            clickCount++;
-            debugBox.textContent = 'clicks: ' + clickCount;
-
-            // Card expand: click anywhere on card except interactive elements
-            var card = e.target.closest('.entry-card');
-            if (card) {
-                var skip = e.target.closest('button,input,form,[data-why],[data-refine],[data-refine-cancel]');
-                if (!skip) {
-                    card.classList.toggle('expanded');
-                    return;
-                }
-            }
-            // Why? button
-            var whyBtn = e.target.closest('[data-why]');
-            if (whyBtn) {
-                var reasonDiv = document.getElementById(whyBtn.getAttribute('data-why'));
-                var open = reasonDiv.classList.toggle('hidden');
-                whyBtn.innerHTML = open ? '💡 Why?' : '💡 Hide';
-                return;
-            }
-            // Refine button
-            var refineBtn = e.target.closest('[data-refine]');
-            if (refineBtn) {
-                var rid = refineBtn.getAttribute('data-refine');
-                refineBtn.classList.add('hidden');
-                var form = document.getElementById('refine-form-' + rid);
-                if (form) { form.classList.remove('hidden'); }
-                var input = document.getElementById('refine-input-' + rid);
-                if (input) { input.focus(); }
-                return;
-            }
+        // --- Attach click handlers to interactive elements ---
+        function attachHandlers() {
+            // Why? buttons
+            document.querySelectorAll('[data-why]').forEach(function(el) {
+                el.onclick = function() {
+                    var reasonDiv = document.getElementById(this.getAttribute('data-why'));
+                    if (reasonDiv) {
+                        var open = reasonDiv.classList.toggle('hidden');
+                        this.innerHTML = open ? '💡 Why?' : '💡 Hide';
+                    }
+                };
+            });
+            // Refine buttons
+            document.querySelectorAll('[data-refine]').forEach(function(el) {
+                el.onclick = function() {
+                    var rid = this.getAttribute('data-refine');
+                    this.classList.add('hidden');
+                    var form = document.getElementById('refine-form-' + rid);
+                    if (form) form.classList.remove('hidden');
+                    var input = document.getElementById('refine-input-' + rid);
+                    if (input) input.focus();
+                };
+            });
             // Refine cancel
-            var cancelBtn = e.target.closest('[data-refine-cancel]');
-            if (cancelBtn) {
-                var cid = cancelBtn.getAttribute('data-refine-cancel');
-                var cf = document.getElementById('refine-form-' + cid);
-                if (cf) { cf.classList.add('hidden'); }
-                var rb = document.querySelector('[data-refine="' + cid + '"]');
-                if (rb) { rb.classList.remove('hidden'); }
-                return;
-            }
-        });
+            document.querySelectorAll('[data-refine-cancel]').forEach(function(el) {
+                el.onclick = function() {
+                    var cid = this.getAttribute('data-refine-cancel');
+                    var cf = document.getElementById('refine-form-' + cid);
+                    if (cf) cf.classList.add('hidden');
+                    var rb = document.querySelector('[data-refine="' + cid + '"]');
+                    if (rb) rb.classList.remove('hidden');
+                };
+            });
+        }
+        // Run on load and after HTMX swaps
+        attachHandlers();
+        document.body.addEventListener('htmx:afterSwap', attachHandlers);
         document.body.appendChild(indicator);
 
         // Layer 1: Set a cookie so the server can read it on initial page loads
