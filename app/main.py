@@ -298,6 +298,7 @@ async def view_day(request: Request, day_date: str, db: Session = Depends(_get_d
         {
             "today": day_date,
             "label": label,
+            "goal": goal,
             "entries": [_entry_to_dict(e) for e in entries],
             "totals": totals,
             "recent_dates": recent_dates,
