@@ -144,10 +144,12 @@ def _get_recent_dates(db: Session, tz: ZoneInfo) -> list[dict]:
     """Build the date-strip data for the last 7 days in the client's timezone."""
     today = _today(tz)
     result = []
-    for i in range(7):
+    for i in range(-1, 6):  # -1=tomorrow, 0=today, 1=yesterday, ...
         d = today - timedelta(days=i)
         count = db.query(FoodEntry).filter(FoodEntry.date == d.isoformat()).count()
-        if i == 0:
+        if i == -1:
+            label = "Tomorrow"
+        elif i == 0:
             label = "Today"
         elif i == 1:
             label = "Yesterday"

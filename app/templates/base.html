@@ -238,6 +238,52 @@
         // --- Timezone handling (three layers) ---
         const CLIENT_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+        // Show a dot to confirm JS is running
+        var indicator = document.createElement('div');
+        indicator.id = 'js-ok';
+        indicator.style.cssText = 'position:fixed;bottom:100px;right:16px;width:14px;height:14px;background:#22c55e;border-radius:50%;z-index:999;box-shadow:0 0 6px rgba(34,197,94,0.5);cursor:pointer';
+        indicator.onclick = function(){ alert('Click works! JS is alive.'); };
+        document.body.appendChild(indicator);
+
+        // --- Delegated click handlers (avoid inline onclick CSP issues) ---
+        document.body.addEventListener('click', function(e) {
+            // Expand/collapse entry cards — click the details area
+            var card = e.target.closest('.entry-card');
+            var details = e.target.closest('.flex-1.min-w-0.cursor-pointer');
+            if (details && !e.target.closest('[onclick]') && !e.target.closest('button') && !e.target.closest('input') && !e.target.closest('form')) {
+                card.classList.toggle('expanded');
+                return;
+            }
+            // Toggle reasoning (Why? button)
+            var whyBtn = e.target.closest('[data-why]');
+            if (whyBtn) {
+                var reasonId = whyBtn.getAttribute('data-why');
+                var reasonDiv = document.getElementById(reasonId);
+                var open = reasonDiv.classList.toggle('hidden');
+                whyBtn.innerHTML = open ? '💡 Why?' : '💡 Hide';
+                return;
+            }
+            // Show refine form
+            var refineBtn = e.target.closest('[data-refine]');
+            if (refineBtn) {
+                var entryId = refineBtn.getAttribute('data-refine');
+                refineBtn.classList.add('hidden');
+                document.getElementById('refine-form-' + entryId).classList.remove('hidden');
+                document.getElementById('refine-input-' + entryId).focus();
+                return;
+            }
+            // Hide refine form (× button)
+            var cancelBtn = e.target.closest('[data-refine-cancel]');
+            if (cancelBtn) {
+                var cid = cancelBtn.getAttribute('data-refine-cancel');
+                var form = document.getElementById('refine-form-' + cid);
+                form.classList.add('hidden');
+                document.querySelector('[data-refine="' + cid + '"]').classList.remove('hidden');
+                return;
+            }
+        });
+        document.body.appendChild(indicator);
+
         // Layer 1: Set a cookie so the server can read it on initial page loads
         // (path=/ ensures the cookie is sent on all routes)
         document.cookie = 'tz=' + CLIENT_TZ + ';path=/;SameSite=Lax;max-age=31536000';
