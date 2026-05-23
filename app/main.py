@@ -47,6 +47,17 @@ def _get_client_tz(
     return TZ_UTC
 
 
+def _get_calorie_goal(
+    goal_cookie: str | None = Cookie(None, alias="calorie_goal"),
+) -> int:
+    """Read the daily calorie goal from a cookie, default 2400."""
+    if goal_cookie and goal_cookie.lstrip("-").isdigit():
+        g = int(goal_cookie)
+        if 500 <= g <= 10000:
+            return g
+    return 2400
+
+
 def _today(tz: ZoneInfo) -> date:
     """Get today's date in the given timezone."""
     return datetime.now(tz).date()
@@ -155,7 +166,7 @@ def _get_recent_dates(db: Session, tz: ZoneInfo) -> list[dict]:
 # --- Routes ---
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, db: Session = Depends(_get_db), tz: ZoneInfo = Depends(_get_client_tz)):
+async def index(request: Request, db: Session = Depends(_get_db), tz: ZoneInfo = Depends(_get_client_tz), goal: int = Depends(_get_calorie_goal)):
     today_str = _today(tz).isoformat()
     entries, totals = _get_day_data(db, today_str)
     recent_dates = _get_recent_dates(db, tz)
@@ -165,6 +176,7 @@ async def index(request: Request, db: Session = Depends(_get_db), tz: ZoneInfo =
         "index.html",
         {
             "today": today_str,
+            "goal": goal,
             "entries": [_entry_to_dict(e) for e in entries],
             "totals": totals,
             "recent_dates": recent_dates,
@@ -180,6 +192,7 @@ async def upload_food(
     local_date: str | None = Form(None),
     db: Session = Depends(_get_db),
     tz: ZoneInfo = Depends(_get_client_tz),
+    goal: int = Depends(_get_calorie_goal),
 ):
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(400, "File must be an image")
@@ -247,6 +260,7 @@ async def upload_food(
             request,
             "partials/_entry_list.html",
             {
+                "goal": goal,
                 "entries": [_entry_to_dict(e) for e in entries],
                 "totals": totals,
             },
@@ -256,7 +270,7 @@ async def upload_food(
 
 
 @app.get("/day/{day_date}", response_class=HTMLResponse)
-async def view_day(request: Request, day_date: str, db: Session = Depends(_get_db), tz: ZoneInfo = Depends(_get_client_tz)):
+async def view_day(request: Request, day_date: str, db: Session = Depends(_get_db), tz: ZoneInfo = Depends(_get_client_tz), goal: int = Depends(_get_calorie_goal)):
     entries, totals = _get_day_data(db, day_date)
     today_str = _today(tz).isoformat()
     yesterday_str = (_today(tz) - timedelta(days=1)).isoformat()
@@ -270,6 +284,7 @@ async def view_day(request: Request, day_date: str, db: Session = Depends(_get_d
             {
                 "today": day_date,
                 "label": label,
+                "goal": goal,
                 "entries": [_entry_to_dict(e) for e in entries],
                 "totals": totals,
             },
@@ -291,7 +306,7 @@ async def view_day(request: Request, day_date: str, db: Session = Depends(_get_d
 
 
 @app.delete("/entries/{entry_id}")
-async def delete_entry(entry_id: int, request: Request, db: Session = Depends(_get_db), tz: ZoneInfo = Depends(_get_client_tz)):
+async def delete_entry(entry_id: int, request: Request, db: Session = Depends(_get_db), tz: ZoneInfo = Depends(_get_client_tz), goal: int = Depends(_get_calorie_goal)):
     entry = db.query(FoodEntry).filter(FoodEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(404, "Entry not found")
@@ -319,6 +334,7 @@ async def delete_entry(entry_id: int, request: Request, db: Session = Depends(_g
             {
                 "today": current_day,
                 "label": "",
+                "goal": goal,
                 "entries": [_entry_to_dict(e) for e in entries],
                 "totals": totals,
             },
@@ -334,6 +350,7 @@ async def refine_entry(
     message: str = Form(...),
     db: Session = Depends(_get_db),
     tz: ZoneInfo = Depends(_get_client_tz),
+    goal: int = Depends(_get_calorie_goal),
 ):
     """Refine an existing food entry based on user correction."""
     entry = db.query(FoodEntry).filter(FoodEntry.id == entry_id).first()
@@ -388,6 +405,7 @@ async def refine_entry(
         {
             "today": today_str,
             "label": "",
+            "goal": goal,
             "entries": [_entry_to_dict(e) for e in entries],
             "totals": totals,
         },
