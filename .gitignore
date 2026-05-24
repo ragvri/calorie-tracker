@@ -15,6 +15,7 @@ data/
 # AI assistant artifacts
 .codex/
 .claude/
+.rtk/
 
 # Environment
 .env
