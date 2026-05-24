@@ -5,7 +5,7 @@
             <span class="text-sm font-semibold text-white/80">
                 {% if label %}{{ label }}{% else %}Today{% endif %}
             </span>
-            <span class="text-[11px] text-white/50 font-medium">goal 2,400 kcal</span>
+            <span class="text-[11px] text-white/50 font-medium">goal {{ "%s"|format(goal) }} kcal</span>
         </div>
 
         <div class="flex items-center gap-5">
@@ -13,7 +13,6 @@
             <div class="relative flex-shrink-0">
                 <svg width="100" height="100" viewBox="0 0 100 100">
                     <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="7"/>
-                    {% set goal = 2400 %}
                     {% set pct = (totals.calories / goal * 100)|round(1) %}
                     {% if pct > 100 %}{% set pct = 100 %}{% endif %}
                     {% set offset = 276.5 - (276.5 * (pct / 100)) %}
@@ -37,8 +36,8 @@
 
             <!-- Macro stats -->
             <div class="flex-1 space-y-3">
-                <!-- Protein -->
-                {% set daily_p = 150 %}
+                <!-- Protein: 30% of calories from protein, 4 cal/g -->
+                {% set daily_p = (goal * 0.3 / 4)|round(0) %}
                 {% set ppct = (totals.protein / daily_p * 100)|round(0) %}
                 <div>
                     <div class="flex justify-between items-baseline mb-1">
@@ -49,8 +48,8 @@
                         <div class="macro-fill bg-blue-400" style="width: {{ ppct if ppct <= 100 else 100 }}%"></div>
                     </div>
                 </div>
-                <!-- Carbs -->
-                {% set daily_c = 300 %}
+                <!-- Carbs: 50% of calories from carbs, 4 cal/g -->
+                {% set daily_c = (goal * 0.5 / 4)|round(0) %}
                 {% set cpct = (totals.carbs / daily_c * 100)|round(0) %}
                 <div>
                     <div class="flex justify-between items-baseline mb-1">
@@ -61,8 +60,8 @@
                         <div class="macro-fill bg-amber-400" style="width: {{ cpct if cpct <= 100 else 100 }}%"></div>
                     </div>
                 </div>
-                <!-- Fat -->
-                {% set daily_f = 65 %}
+                <!-- Fat: 20% of calories from fat, 9 cal/g -->
+                {% set daily_f = (goal * 0.2 / 9)|round(0) %}
                 {% set fpct = (totals.fat / daily_f * 100)|round(0) %}
                 <div>
                     <div class="flex justify-between items-baseline mb-1">

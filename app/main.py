@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, HTTPException, Header, Cookie
+from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, HTTPException, Header, Cookie, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal, engine, Base, DATA_DIR
-from .models import FoodEntry
+from .models import FoodEntry, WeightEntry
 from .gemini_client import analyze_food_image, refine_food_estimate
 from .image_utils import compress_image
 
@@ -344,6 +344,278 @@ async def delete_entry(entry_id: int, request: Request, db: Session = Depends(_g
         )
 
     return RedirectResponse(url="/", status_code=303)
+
+
+# ─── Weight Routes ────────────────────────────────────────────────
+
+
+@app.post("/weight")
+async def log_weight(
+    request: Request,
+    date: str = Form(...),
+    weight_kg: float = Form(...),
+    notes: str = Form(""),
+    db: Session = Depends(_get_db),
+):
+    """Log a weight entry."""
+    entry = WeightEntry(date=date, weight_kg=weight_kg, notes=notes or None)
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+
+    if request.headers.get("hx-request") == "true":
+        # Return the weight list partial
+        weights = db.query(WeightEntry).order_by(WeightEntry.date.desc()).limit(20).all()
+        return templates.TemplateResponse(
+            request,
+            "partials/_weight_list.html",
+            {"weights": weights},
+        )
+
+    return RedirectResponse(url="/stats", status_code=303)
+
+
+@app.delete("/weight/{weight_id}")
+async def delete_weight(weight_id: int, request: Request, db: Session = Depends(_get_db)):
+    entry = db.query(WeightEntry).filter(WeightEntry.id == weight_id).first()
+    if not entry:
+        raise HTTPException(404, "Weight entry not found")
+    db.delete(entry)
+    db.commit()
+
+    if request.headers.get("hx-request") == "true":
+        weights = db.query(WeightEntry).order_by(WeightEntry.date.desc()).limit(20).all()
+        return templates.TemplateResponse(
+            request,
+            "partials/_weight_list.html",
+            {"weights": weights},
+        )
+
+    return {"ok": True}
+
+
+# ─── Stats / Analytics Routes ────────────────────────────────────
+
+
+@app.get("/stats", response_class=HTMLResponse)
+async def stats_page(
+    request: Request,
+    db: Session = Depends(_get_db),
+    tz: ZoneInfo = Depends(_get_client_tz),
+    goal: int = Depends(_get_calorie_goal),
+):
+    today_str = _today(tz).isoformat()
+    recent_dates = _get_recent_dates(db, tz)
+
+    # Get last 10 weight entries for the sidebar
+    weights = db.query(WeightEntry).order_by(WeightEntry.date.desc()).limit(20).all()
+
+    return templates.TemplateResponse(
+        request,
+        "stats.html",
+        {
+            "today": today_str,
+            "goal": goal,
+            "recent_dates": recent_dates,
+            "weights": weights,
+            "weight_count": db.query(WeightEntry).count(),
+            "entry_count": db.query(FoodEntry).count(),
+            "total_days": len(set(
+                row[0] for row in db.query(FoodEntry.date).distinct().all()
+            )),
+        },
+    )
+
+
+@app.get("/stats/data/daily")
+async def stats_daily_data(
+    days: int = Query(30, ge=7, le=365),
+    db: Session = Depends(_get_db),
+):
+    """JSON endpoint: daily totals for calories, protein, carbs, fat over N days."""
+    from datetime import date as date_type, timedelta
+    today = date_type.today()
+    start = today - timedelta(days=days - 1)
+
+    # Fetch all entries in date range
+    entries = (
+        db.query(FoodEntry)
+        .filter(FoodEntry.date >= start.isoformat())
+        .order_by(FoodEntry.date)
+        .all()
+    )
+
+    # Aggregate by date
+    daily: dict[str, dict] = {}
+    for e in entries:
+        if e.date not in daily:
+            daily[e.date] = {
+                "date": e.date,
+                "calories": 0.0,
+                "protein": 0.0,
+                "carbs": 0.0,
+                "fat": 0.0,
+                "entry_count": 0,
+            }
+        daily[e.date]["calories"] += e.calories
+        daily[e.date]["protein"] += e.protein_g
+        daily[e.date]["carbs"] += e.carbs_g
+        daily[e.date]["fat"] += e.fat_g
+        daily[e.date]["entry_count"] += 1
+
+    # Fill in missing days with zeroes
+    result = []
+    for i in range(days):
+        d = (start + timedelta(days=i)).isoformat()
+        if d in daily:
+            result.append(daily[d])
+        else:
+            result.append({
+                "date": d,
+                "calories": 0.0,
+                "protein": 0.0,
+                "carbs": 0.0,
+                "fat": 0.0,
+                "entry_count": 0,
+            })
+
+    return {"data": result}
+
+
+@app.get("/stats/data/weight")
+async def stats_weight_data(
+    db: Session = Depends(_get_db),
+):
+    """JSON endpoint: all weight entries sorted by date."""
+    weights = (
+        db.query(WeightEntry)
+        .order_by(WeightEntry.date.asc())
+        .all()
+    )
+    return {
+        "data": [
+            {
+                "id": w.id,
+                "date": w.date,
+                "weight_kg": w.weight_kg,
+                "notes": w.notes or "",
+            }
+            for w in weights
+        ]
+    }
+
+
+@app.get("/stats/data/weekly")
+async def stats_weekly_data(
+    weeks: int = Query(12, ge=4, le=52),
+    db: Session = Depends(_get_db),
+):
+    """JSON endpoint: weekly averages for macros."""
+    from datetime import date as date_type, timedelta
+    today = date_type.today()
+    # Find the most recent Monday (or today if Monday)
+    monday = today - timedelta(days=today.weekday())
+    start = monday - timedelta(weeks=weeks - 1)
+
+    entries = (
+        db.query(FoodEntry)
+        .filter(FoodEntry.date >= start.isoformat())
+        .order_by(FoodEntry.date)
+        .all()
+    )
+
+    # Group by ISO week
+    from collections import defaultdict
+    weekly: dict = defaultdict(lambda: {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "days": set()})
+
+    for e in entries:
+        # Parse date and get ISO week start (Monday)
+        parts = e.date.split("-")
+        ed = date_type(int(parts[0]), int(parts[1]), int(parts[2]))
+        week_start = ed - timedelta(days=ed.weekday())
+        key = week_start.isoformat()
+        weekly[key]["calories"] += e.calories
+        weekly[key]["protein"] += e.protein_g
+        weekly[key]["carbs"] += e.carbs_g
+        weekly[key]["fat"] += e.fat_g
+        weekly[key]["days"].add(e.date)
+
+    result = []
+    for i in range(weeks):
+        ws = (start + timedelta(weeks=i)).isoformat()
+        if ws in weekly:
+            w = weekly[ws]
+            num_days = len(w["days"]) if w["days"] else 1
+            result.append({
+                "week_start": ws,
+                "avg_calories": round(w["calories"] / num_days, 1),
+                "avg_protein": round(w["protein"] / num_days, 1),
+                "avg_carbs": round(w["carbs"] / num_days, 1),
+                "avg_fat": round(w["fat"] / num_days, 1),
+                "total_calories": round(w["calories"], 1),
+                "logged_days": num_days,
+            })
+        else:
+            result.append({
+                "week_start": ws,
+                "avg_calories": 0,
+                "avg_protein": 0,
+                "avg_carbs": 0,
+                "avg_fat": 0,
+                "total_calories": 0,
+                "logged_days": 0,
+            })
+
+    return {"data": result}
+
+
+@app.get("/stats/data/adherence")
+async def stats_adherence_data(
+    days: int = Query(30, ge=7, le=365),
+    db: Session = Depends(_get_db),
+    goal: int = Depends(_get_calorie_goal),
+):
+    """JSON: how many days hit the calorie goal."""
+    from datetime import date as date_type, timedelta
+    today = date_type.today()
+    start = today - timedelta(days=days - 1)
+
+    entries = (
+        db.query(FoodEntry)
+        .filter(FoodEntry.date >= start.isoformat())
+        .order_by(FoodEntry.date)
+        .all()
+    )
+
+    daily_totals: dict[str, float] = {}
+    for e in entries:
+        daily_totals[e.date] = daily_totals.get(e.date, 0) + e.calories
+
+    hit = 0
+    missed = 0
+    no_data = 0
+    for i in range(days):
+        d = (start + timedelta(days=i)).isoformat()
+        if d in daily_totals:
+            if daily_totals[d] <= goal:
+                hit += 1
+            else:
+                missed += 1
+        else:
+            no_data += 1
+
+    return {
+        "data": {
+            "hit_goal": hit,
+            "over_goal": missed,
+            "no_data": no_data,
+            "total_days": days,
+            "hit_pct": round(hit / days * 100, 1) if days else 0,
+        }
+    }
+
+
+# ─── Refine Route ────────────────────────────────────────────────
 
 
 @app.post("/entries/{entry_id}/refine")

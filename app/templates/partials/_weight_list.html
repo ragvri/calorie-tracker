@@ -1,0 +1,20 @@
+{% if weights %}
+<div class="flex items-center gap-2 flex-wrap">
+    {% for w in weights[:8] %}
+    <div class="inline-flex items-center gap-1.5 bg-gray-50 rounded-lg px-2.5 py-1.5 text-xs" title="{{ w.date }}{% if w.notes %}: {{ w.notes }}{% endif %}">
+        <span class="font-semibold text-gray-700">{{ "%.1f"|format(w.weight_kg) }}</span>
+        <span class="text-gray-400">kg</span>
+        <span class="text-gray-300">·</span>
+        <span class="text-gray-400">{{ w.date[-5:] }}</span>
+        {% if w.notes %}
+        <span class="text-gray-300 truncate max-w-[60px]">{{ w.notes }}</span>
+        {% endif %}
+        <button hx-delete="/weight/{{ w.id }}" hx-confirm="Delete this weight entry?"
+                hx-target="#weight-list" hx-swap="innerHTML"
+                class="text-gray-300 hover:text-red-500 transition-colors ml-0.5 leading-none">&times;</button>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-xs text-gray-400">No weights logged yet. Add your first above!</p>
+{% endif %}

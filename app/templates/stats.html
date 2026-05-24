@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+{% block title %}Stats - CalPal{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h2 class="text-lg font-bold text-gray-900">📊 Analytics</h2>
+            <p class="text-xs text-gray-500 mt-0.5">{{ entry_count }} meals · {{ total_days }} days · {{ weight_count }} weigh-ins</p>
+        </div>
+        <div class="flex gap-1.5">
+            <a href="/" class="inline-flex items-center gap-1 px-3 py-1.5 bg-white rounded-xl text-xs font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors">
+                ← Home
+            </a>
+        </div>
+    </div>
+
+    <!-- Weight Quick-Log (collapsible inline) -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-gray-800">⚖️ Log Weight</h3>
+            <span class="text-[11px] text-gray-400 font-medium">{{ weight_count }} entries</span>
+        </div>
+        <form hx-post="/weight" hx-target="#weight-list" hx-swap="innerHTML" 
+              class="flex items-center gap-2 flex-wrap"
+              hx-on::after-request="this.reset()">
+            <input type="hidden" name="date" value="{{ today }}">
+            <div class="relative flex-1 min-w-[120px]">
+                <input type="number" name="weight_kg" step="0.1" placeholder="Weight (kg)" required
+                       class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-300 focus:bg-white transition-all">
+            </div>
+            <input type="text" name="notes" placeholder="Notes (optional)"
+                   class="flex-1 min-w-[100px] border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-300 focus:bg-white transition-all"
+                   autocomplete="off">
+            <button type="submit"
+                    class="px-4 py-2 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-700 transition-colors whitespace-nowrap">
+                + Log
+            </button>
+        </form>
+        <!-- Recent weights mini-list -->
+        <div id="weight-list" class="mt-3">
+            {% include "partials/_weight_list.html" %}
+        </div>
+    </div>
+
+    <!-- Time range selector -->
+    <div class="flex gap-1.5 mb-4" id="range-tabs">
+        <button onclick="switchRange(7)" class="range-tab px-4 py-2 rounded-xl text-xs font-semibold transition-all bg-brand-600 text-white shadow-sm" data-days="7">7 Days</button>
+        <button onclick="switchRange(30)" class="range-tab px-4 py-2 rounded-xl text-xs font-semibold transition-all bg-white text-gray-600 shadow-sm hover:bg-gray-50" data-days="30">30 Days</button>
+        <button onclick="switchRange(90)" class="range-tab px-4 py-2 rounded-xl text-xs font-semibold transition-all bg-white text-gray-600 shadow-sm hover:bg-gray-50" data-days="90">90 Days</button>
+    </div>
+
+    <!-- Chart Grid -->
+    <div class="space-y-4">
+
+        <!-- 1. Daily Calories & Macros -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-bold text-gray-800">🔥 Daily Calories</h3>
+                <div class="flex gap-2">
+                    <button onclick="toggleMacroLines()" id="macro-toggle-btn" class="text-[11px] font-semibold text-brand-600 hover:text-brand-700 transition-colors">
+                        + Show Macros
+                    </button>
+                    <span class="text-[10px] text-gray-400 font-medium">kcal</span>
+                </div>
+            </div>
+            <div class="relative">
+                <canvas id="calorieChart" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- 2. Weight Over Time -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-bold text-gray-800">⚖️ Weight Trend</h3>
+                <span class="text-[10px] text-gray-400 font-medium">kg</span>
+            </div>
+            <div class="relative">
+                <canvas id="weightChart" height="180"></canvas>
+            </div>
+        </div>
+
+        <!-- 3. Weekly Averages -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-bold text-gray-800">📅 Weekly Averages</h3>
+                <span class="text-[10px] text-gray-400 font-medium">per logged day</span>
+            </div>
+            <div class="relative">
+                <canvas id="weeklyChart" height="180"></canvas>
+            </div>
+        </div>
+
+        <!-- 4. Goal Adherence -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-bold text-gray-800">🎯 Goal Adherence</h3>
+                <span class="text-[10px] text-gray-400 font-medium">{{ goal }} kcal goal</span>
+            </div>
+            <div id="adherence-container" class="flex items-center gap-4">
+                <div class="relative w-[120px] h-[120px] flex-shrink-0">
+                    <canvas id="adherenceChart" width="120" height="120"></canvas>
+                </div>
+                <div id="adherence-text" class="flex-1">
+                    <p class="text-sm text-gray-500">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// ─── State ──────────────────────────────────────────────────────
+let currentDays = 30;
+let calorieChartInstance = null;
+let weightChartInstance = null;
+let weeklyChartInstance = null;
+let adherenceChartInstance = null;
+let macroLinesVisible = false;
+const CALORIE_GOAL = {{ goal }};
+
+const COLORS = {
+    calories: { bg: 'rgba(242, 85, 63, 0.15)', border: '#f2553f' },
+    protein: { bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6' },
+    carbs:    { bg: 'rgba(245, 158, 11, 0.15)', border: '#d97706' },
+    fat:      { bg: 'rgba(225, 29, 72, 0.15)', border: '#e11d48' },
+    on_goal:  { bg: ['rgba(34, 197, 94, 0.9)', 'rgba(239, 68, 68, 0.9)'] },
+    weight:   { border: '#3b82f6', bg: 'rgba(59, 130, 246, 0.08)' },
+};
+
+// ─── Date formatting helpers ────────────────────────────────────
+function fmtDate(iso) {
+    const d = new Date(iso + 'T12:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function fmtWeek(iso) {
+    const d = new Date(iso + 'T12:00:00');
+    return 'W' + getWeekNumber(d);
+}
+
+function getWeekNumber(d) {
+    const start = new Date(d.getFullYear(), 0, 1);
+    const diff = (d - start + (start.getTimezoneOffset() - d.getTimezoneOffset()) * 60000) / 86400000;
+    return Math.ceil((diff + start.getDay() + 1) / 7);
+}
+
+// ─── Time range switcher ────────────────────────────────────────
+function switchRange(days) {
+    currentDays = days;
+    document.querySelectorAll('.range-tab').forEach(tab => {
+        if (parseInt(tab.dataset.days) === days) {
+            tab.className = 'range-tab px-4 py-2 rounded-xl text-xs font-semibold transition-all bg-brand-600 text-white shadow-sm';
+        } else {
+            tab.className = 'range-tab px-4 py-2 rounded-xl text-xs font-semibold transition-all bg-white text-gray-600 shadow-sm hover:bg-gray-50';
+        }
+    });
+    loadAllCharts();
+}
+
+// ─── Toggle macros ──────────────────────────────────────────────
+function toggleMacroLines() {
+    macroLinesVisible = !macroLinesVisible;
+    document.getElementById('macro-toggle-btn').textContent = macroLinesVisible ? '− Hide Macros' : '+ Show Macros';
+    if (calorieChartInstance) {
+        calorieChartInstance.data.datasets.forEach((ds, i) => {
+            if (i > 0) ds.hidden = !macroLinesVisible;
+        });
+        calorieChartInstance.options.plugins.legend.display = macroLinesVisible;
+        calorieChartInstance.update();
+    }
+}
+
+// ─── Load all charts ───────────────────────────────────────────
+async function loadAllCharts() {
+    await Promise.all([
+        loadCalorieChart(),
+        loadWeightChart(),
+        loadWeeklyChart(),
+        loadAdherenceChart(),
+    ]);
+}
+
+// ─── 1. Daily Calorie Chart ────────────────────────────────────
+async function loadCalorieChart() {
+    const res = await fetch(`/stats/data/daily?days=${currentDays}`);
+    const json = await res.json();
+    const data = json.data;
+
+    const labels = data.map(d => fmtDate(d.date));
+    const cals = data.map(d => d.calories);
+
+    const datasets = [
+        {
+            label: 'Calories',
+            data: cals,
+            backgroundColor: data.map(d => d.calories > CALORIE_GOAL ? 'rgba(239, 68, 68, 0.6)' : 'rgba(242, 85, 63, 0.6)'),
+            borderColor: data.map(d => d.calories > CALORIE_GOAL ? '#ef4444' : '#f2553f'),
+            borderWidth: 1,
+            borderRadius: 4,
+            order: 2,
+        },
+        {
+            type: 'line',
+            label: 'Protein (g)',
+            data: data.map(d => d.protein),
+            backgroundColor: COLORS.protein.bg,
+            borderColor: COLORS.protein.border,
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+            hidden: !macroLinesVisible,
+            yAxisID: 'yMacro',
+            order: 1,
+        },
+        {
+            type: 'line',
+            label: 'Carbs (g)',
+            data: data.map(d => d.carbs),
+            backgroundColor: COLORS.carbs.bg,
+            borderColor: COLORS.carbs.border,
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+            hidden: !macroLinesVisible,
+            yAxisID: 'yMacro',
+            order: 1,
+        },
+        {
+            type: 'line',
+            label: 'Fat (g)',
+            data: data.map(d => d.fat),
+            backgroundColor: COLORS.fat.bg,
+            borderColor: COLORS.fat.border,
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+            hidden: !macroLinesVisible,
+            yAxisID: 'yMacro',
+            order: 1,
+        },
+    ];
+
+    const ctx = document.getElementById('calorieChart').getContext('2d');
+    if (calorieChartInstance) calorieChartInstance.destroy();
+
+    calorieChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: macroLinesVisible,
+                    position: 'bottom',
+                    labels: {
+                        font: { size: 10, family: 'Inter' },
+                        boxWidth: 12,
+                        padding: 10,
+                        usePointStyle: true,
+                        filter: function(item) {
+                            // Only show macro items (not the Calories bar)
+                            return item.datasetIndex !== 0;
+                        },
+                    },
+                },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleFont: { size: 12 },
+                    bodyFont: { size: 11 },
+                    cornerRadius: 10,
+                    padding: 10,
+                },
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        font: { size: 9, family: 'Inter' },
+                        maxRotation: 45,
+                        maxTicksLimit: Math.max(7, Math.min(15, currentDays)),
+                    },
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: { font: { size: 9, family: 'Inter' } },
+                    title: { display: true, text: 'kcal', font: { size: 10, family: 'Inter' } },
+                },
+                yMacro: {
+                    beginAtZero: true,
+                    position: 'right',
+                    grid: { display: false },
+                    ticks: { font: { size: 9, family: 'Inter' } },
+                    title: { display: true, text: 'grams', font: { size: 10, family: 'Inter' } },
+                },
+            },
+        },
+    });
+}
+
+// ─── 2. Weight Chart ───────────────────────────────────────────
+async function loadWeightChart() {
+    const res = await fetch('/stats/data/weight');
+    const json = await res.json();
+    const data = json.data;
+
+    if (data.length === 0) {
+        document.getElementById('weightChart').parentElement.innerHTML = `
+            <div class="text-center py-8">
+                <div class="text-3xl mb-2">⚖️</div>
+                <p class="text-sm text-gray-400">Log your weight above to see the trend</p>
+            </div>
+        `;
+        return;
+    }
+
+    const labels = data.map(d => fmtDate(d.date));
+    const weights = data.map(d => d.weight_kg);
+
+    const ctx = document.getElementById('weightChart').getContext('2d');
+    if (weightChartInstance) weightChartInstance.destroy();
+
+    const minW = Math.min(...weights) - 1;
+    const maxW = Math.max(...weights) + 1;
+
+    weightChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Weight',
+                data: weights,
+                borderColor: COLORS.weight.border,
+                backgroundColor: COLORS.weight.bg,
+                borderWidth: 2.5,
+                pointBackgroundColor: COLORS.weight.border,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                fill: true,
+                tension: 0.35,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleFont: { size: 12 },
+                    bodyFont: { size: 11 },
+                    cornerRadius: 10,
+                    padding: 10,
+                    callbacks: {
+                        label: ctx => `${ctx.parsed.y.toFixed(1)} kg`,
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 9, family: 'Inter' }, maxTicksLimit: 8 },
+                },
+                y: {
+                    min: Math.floor(minW),
+                    max: Math.ceil(maxW),
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: {
+                        font: { size: 9, family: 'Inter' },
+                        callback: v => v.toFixed(1) + ' kg',
+                    },
+                },
+            },
+        },
+    });
+}
+
+// ─── 3. Weekly Averages Chart ──────────────────────────────────
+async function loadWeeklyChart() {
+    const weeks = Math.max(8, Math.ceil(currentDays / 7));
+    const res = await fetch(`/stats/data/weekly?weeks=${weeks}`);
+    const json = await res.json();
+    const data = json.data;
+
+    const labels = data.map(d => fmtWeek(d.week_start));
+    const cals = data.map(d => d.avg_calories);
+    const protein = data.map(d => d.avg_protein);
+    const logged = data.map(d => d.logged_days);
+
+    const ctx = document.getElementById('weeklyChart').getContext('2d');
+    if (weeklyChartInstance) weeklyChartInstance.destroy();
+
+    weeklyChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Avg Calories',
+                    data: cals,
+                    backgroundColor: 'rgba(242, 85, 63, 0.7)',
+                    borderColor: '#f2553f',
+                    borderWidth: 1,
+                    borderRadius: 3,
+                    order: 2,
+                },
+                {
+                    label: 'Avg Protein (g)',
+                    data: protein,
+                    type: 'line',
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#3b82f6',
+                    tension: 0.3,
+                    yAxisID: 'yProtein',
+                    order: 1,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { font: { size: 10, family: 'Inter' }, boxWidth: 12, padding: 8 },
+                },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleFont: { size: 12 },
+                    bodyFont: { size: 11 },
+                    cornerRadius: 10,
+                    padding: 10,
+                    callbacks: {
+                        afterBody: items => {
+                            const idx = items[0].dataIndex;
+                            return `📅 ${logged[idx]} day(s) logged`;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 9, family: 'Inter' } },
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: { font: { size: 9, family: 'Inter' } },
+                    title: { display: true, text: 'kcal', font: { size: 10, family: 'Inter' } },
+                },
+                yProtein: {
+                    beginAtZero: true,
+                    position: 'right',
+                    grid: { display: false },
+                    ticks: { font: { size: 9, family: 'Inter' } },
+                    title: { display: true, text: 'grams', font: { size: 10, family: 'Inter' } },
+                },
+            },
+        },
+    });
+}
+
+// ─── 4. Goal Adherence Donut ───────────────────────────────────
+async function loadAdherenceChart() {
+    const res = await fetch(`/stats/data/adherence?days=${currentDays}`);
+    const json = await res.json();
+    const d = json.data;
+
+    const ctx = document.getElementById('adherenceChart').getContext('2d');
+    if (adherenceChartInstance) adherenceChartInstance.destroy();
+
+    adherenceChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['On Goal', 'Over Goal'],
+            datasets: [{
+                data: [d.hit_goal, d.over_goal],
+                backgroundColor: ['#22c55e', '#ef4444'],
+                borderWidth: 0,
+                hoverOffset: 4,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '70%',
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleFont: { size: 12 },
+                    bodyFont: { size: 11 },
+                    cornerRadius: 10,
+                    padding: 10,
+                },
+            },
+        },
+    });
+
+    document.getElementById('adherence-text').innerHTML = `
+        <div class="space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-green-500 flex-shrink-0"></span>
+                <span class="text-xs text-gray-600">On goal</span>
+                <span class="ml-auto text-sm font-bold text-green-600">${d.hit_goal} days</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-red-500 flex-shrink-0"></span>
+                <span class="text-xs text-gray-600">Over goal</span>
+                <span class="ml-auto text-sm font-bold text-red-500">${d.over_goal} days</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-gray-200 flex-shrink-0"></span>
+                <span class="text-xs text-gray-600">No data</span>
+                <span class="ml-auto text-sm font-bold text-gray-400">${d.no_data} days</span>
+            </div>
+            <div class="pt-2 border-t border-gray-100 mt-2">
+                <p class="text-xs text-gray-500">
+                    <span class="text-lg font-extrabold text-gray-900">${d.hit_pct}%</span> adherence
+                </p>
+            </div>
+        </div>
+    `;
+}
+
+// ─── Init ───────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', loadAllCharts);
+</script>
+{% endblock %}
